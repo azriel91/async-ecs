@@ -1,9 +1,13 @@
 use std::fmt::Debug;
 
 use thiserror::Error;
+use tokio::sync::watch::error::{RecvError, SendError};
 
 #[derive(Error, Debug)]
-pub enum Error {
+pub enum Error<E>
+where
+    E: Debug,
+{
     #[error("A System with this name was already registered: {0}!")]
     NameAlreadyRegistered(String),
 
@@ -11,8 +15,17 @@ pub enum Error {
     DependencyWasNotFound(String),
 
     #[error("Unable to start dispatching!")]
-    DispatchSend,
+    DispatchSend(SendError<()>),
 
     #[error("Unable to wait for systems to finish!")]
-    DispatchReceive,
+    DispatchReceive(RecvError),
+
+    #[error("Unable to start dispatching!")]
+    SystemNotifySend(SendError<()>),
+
+    #[error("Unable to wait for systems to finish")]
+    SystemNotifyReceive(RecvError),
+
+    #[error("System `async_run` returned an error.")]
+    SystemRunError(E),
 }

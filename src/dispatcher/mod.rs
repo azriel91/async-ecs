@@ -7,12 +7,10 @@ pub use builder::Builder;
 pub use error::Error;
 pub use run::{LocalRun, LocalRunAsync, Run, RunAsync, ThreadRun, ThreadRunAsync};
 
-use std::cell::RefCell;
-use std::ops::Deref;
-use std::ptr::null;
-use std::sync::Arc;
+use std::{cell::RefCell, marker::PhantomData, ops::Deref, ptr::null, sync::Arc};
 
-use tokio::sync::watch::{Receiver as WatchReceiver, Sender as WatchSender};
+use futures::{stream, stream::TryStreamExt};
+use tokio::sync::watch::{error::RecvError, Receiver as WatchReceiver, Sender as WatchSender};
 
 use crate::world::World;
 
@@ -21,21 +19,25 @@ type Receiver = WatchReceiver<()>;
 
 /// The dispatcher struct, allowing
 /// systems to be executed in parallel.
-pub struct Dispatcher {
+pub struct Dispatcher<E> {
     sender: Sender,
     receivers: Vec<Receiver>,
     world: SharedWorld,
+    marker: PhantomData<E>,
 }
 
-impl Dispatcher {
+impl<E> Dispatcher<E>
+where
+    E: std::fmt::Debug + Send + 'static,
+{
     /// Create builder to build a new dispatcher.
-    pub fn builder() -> Builder<'static> {
+    pub fn builder() -> Builder<'static, E> {
         Builder::new(None)
     }
 
     /// Create builder to build a new dispatcher that
     /// invokes the setup for each passed system.
-    pub fn setup_builder(world: &mut World) -> Builder<'_> {
+    pub fn setup_builder(world: &mut World) -> Builder<'_, E> {
         Builder::new(Some(world))
     }
 
@@ -44,20 +46,15 @@ impl Dispatcher {
     ///
     /// Please note that this method assumes that no resource
     /// is currently borrowed. If that's the case, it panics.
-    pub async fn dispatch(&mut self, world: &World) -> Result<(), Error> {
+    pub async fn dispatch(&mut self, world: &World) -> Result<(), Error<E>> {
         let _guard = self.world.set(world);
 
-        match self.sender.send(()) {
-            Ok(()) => (),
-            Err(_) => return Err(Error::DispatchSend),
-        }
+        self.sender.send(()).map_err(Error::DispatchSend)?;
 
-        for receiver in &mut self.receivers {
-            match receiver.changed().await {
-                Ok(()) => (),
-                Err(_) => return Err(Error::DispatchReceive),
-            }
-        }
+        stream::iter(self.receivers.iter_mut().map(Result::<_, RecvError>::Ok))
+            .try_for_each(Receiver::changed)
+            .await
+            .map_err(Error::DispatchReceive)?;
 
         Ok(())
     }

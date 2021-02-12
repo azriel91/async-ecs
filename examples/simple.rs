@@ -28,10 +28,11 @@ pub struct PositionUpdateSystemData<'s> {
 struct PositionUpdateSystem;
 
 impl<'s> AsyncSystem<'s> for PositionUpdateSystem {
+    type Error = ();
     // Resources used during system execution.
     type SystemData = PositionUpdateSystemData<'s>;
 
-    fn run_async(&mut self, system_data: Self::SystemData) -> BoxFuture<'s, ()> {
+    fn run_async(&mut self, system_data: Self::SystemData) -> BoxFuture<'s, Result<(), ()>> {
         Box::pin(async move {
             let PositionUpdateSystemData {
                 velocities,
@@ -43,6 +44,8 @@ impl<'s> AsyncSystem<'s> for PositionUpdateSystem {
             for (vel, pos) in (&velocities, &mut positions).join() {
                 pos.0 += vel.0;
             }
+
+            Ok(())
         })
     }
 }
@@ -57,9 +60,10 @@ pub struct PrintSystemData<'s> {
 struct PrintSystem;
 
 impl<'s> AsyncSystem<'s> for PrintSystem {
+    type Error = ();
     type SystemData = PrintSystemData<'s>;
 
-    fn run_async(&mut self, system_data: Self::SystemData) -> BoxFuture<'s, ()> {
+    fn run_async(&mut self, system_data: Self::SystemData) -> BoxFuture<'s, Result<(), ()>> {
         Box::pin(async move {
             let PrintSystemData {
                 entities,
@@ -69,6 +73,8 @@ impl<'s> AsyncSystem<'s> for PrintSystem {
             for (entity, pos) in (&entities, &positions).join() {
                 eprintln!("entity {id}: {pos}", id = entity.id(), pos = pos.0);
             }
+
+            Ok(())
         })
     }
 }
@@ -103,7 +109,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         let world = &world;
         stream::iter(0..4)
-            .map(Result::<usize, dispatcher::Error>::Ok)
+            .map(Result::<usize, dispatcher::Error<()>>::Ok)
             .try_fold(dispatcher, |mut dispatcher, n| async move {
                 eprintln!("Iteration {}", n);
                 dispatcher.dispatch(world).await?;
@@ -113,7 +119,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             })
             .await?;
 
-        Result::<(), dispatcher::Error>::Ok(())
+        Result::<(), dispatcher::Error<()>>::Ok(())
     })?;
 
     Ok(())

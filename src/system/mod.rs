@@ -66,12 +66,14 @@ pub trait AsyncSystem<'a>: Sized {
     ///
     /// Every `SystemData` is also a `DynamicSystemData`.
     type SystemData: DynamicSystemData<'a>;
+    /// Error returned when [`run_async`][AsyncSystem::run_async] fails.
+    type Error: std::fmt::Debug;
 
     /// Initialize the systems.
     fn init(&mut self) {}
 
     /// Executes the system with the required system data asynchronous.
-    fn run_async(&mut self, data: Self::SystemData) -> BoxFuture<'a, ()>;
+    fn run_async(&mut self, data: Self::SystemData) -> BoxFuture<'a, Result<(), Self::Error>>;
 
     /// Return the accessor from the [`SystemData`].
     fn accessor<'b>(&'b self) -> AccessorCow<'a, 'b, Self::SystemData> {

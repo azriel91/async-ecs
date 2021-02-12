@@ -10,8 +10,8 @@ use crate::{
 pub type ThreadRun = Box<dyn for<'a> Run<'a> + Send>;
 pub type LocalRun = Box<dyn for<'a> Run<'a>>;
 
-pub type ThreadRunAsync = Box<dyn for<'a> RunAsync<'a> + Send>;
-pub type LocalRunAsync = Box<dyn for<'a> RunAsync<'a>>;
+pub type ThreadRunAsync<E> = Box<dyn for<'a> RunAsync<'a, Error = E> + Send>;
+pub type LocalRunAsync<E> = Box<dyn for<'a> RunAsync<'a, Error = E>>;
 
 /// Trait for fetching data and running systems.
 /// Automatically implemented for systems.
@@ -41,6 +41,8 @@ where
 /// Trait for fetching data and running systems with async/await.
 /// Automatically implemented for systems.
 pub trait RunAsync<'a> {
+    /// Error returned when [`run_async`][AsyncSystem::run_async] fails.
+    type Error: std::fmt::Debug;
     /// Runs the system now.
     ///
     /// # Panics
@@ -49,14 +51,19 @@ pub trait RunAsync<'a> {
     /// which are borrowed in an incompatible way already
     /// (tries to read from a resource which is already written to or
     /// tries to write to a resource which is read from).
-    fn run(&mut self, world: &'a World) -> BoxFuture<'a, ()>;
+    fn run(&mut self, world: &'a World) -> BoxFuture<'a, Result<(), Self::Error>>;
 }
 
 impl<'a, T> RunAsync<'a> for T
 where
     T: AsyncSystem<'a>,
 {
-    fn run(&mut self, world: &'a World) -> BoxFuture<'a, ()> {
+    type Error = <T as AsyncSystem<'a>>::Error;
+
+    fn run(
+        &mut self,
+        world: &'a World,
+    ) -> BoxFuture<'a, Result<(), <T as AsyncSystem<'a>>::Error>> {
         let data = T::SystemData::fetch(self.accessor().deref(), world);
 
         self.run_async(data)

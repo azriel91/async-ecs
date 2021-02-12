@@ -139,7 +139,7 @@ pub trait Join {
     /// #[tokio::main]
     /// async fn main() {
     ///     let mut world = World::default();
-    ///     let mut dispatcher = Dispatcher::setup_builder(&mut world)
+    ///     let mut dispatcher = Dispatcher::<()>::setup_builder(&mut world)
     ///         .with(ExampleSystem, "example_system", &[])
     ///         .unwrap()
     ///         .build();

@@ -1,4 +1,4 @@
-use std::fmt::Debug;
+use std::{fmt::Debug, marker::PhantomData};
 
 use hashbrown::hash_map::{Entry, HashMap};
 use tokio::{
@@ -64,7 +64,7 @@ struct SystemId(pub usize);
 /// # let system_d = Dummy;
 /// # let system_e = Dummy;
 /// #
-/// let dispatcher = Dispatcher::builder()
+/// let dispatcher = Dispatcher::<()>::builder()
 ///     .with(system_a, "a", &[])
 ///     .unwrap()
 ///     .with(system_b, "b", &["a"])
@@ -105,7 +105,9 @@ struct SystemId(pub usize);
 /// # let b_enabled = true;
 /// # let system_a = Dummy;
 /// # let system_b = Dummy;
-/// let mut builder = Dispatcher::builder().with(system_a, "a", &[]).unwrap();
+/// let mut builder = Dispatcher::<()>::builder()
+///     .with(system_a, "a", &[])
+///     .unwrap();
 ///
 /// if b_enabled {
 ///     builder.add(system_b, "b", &[]).unwrap();
@@ -114,14 +116,17 @@ struct SystemId(pub usize);
 /// let dispatcher = builder.build();
 /// # }
 /// ```
-pub struct Builder<'a> {
+pub struct Builder<'a, E> {
     world: Option<&'a mut World>,
     next_id: SystemId,
-    items: HashMap<SystemId, Item>,
+    items: HashMap<SystemId, Item<E>>,
     names: HashMap<String, SystemId>,
 }
 
-impl<'a> Builder<'a> {
+impl<'a, E> Builder<'a, E>
+where
+    E: std::fmt::Debug + Send + 'static,
+{
     pub fn new(world: Option<&'a mut World>) -> Self {
         Self {
             world,
@@ -133,8 +138,9 @@ impl<'a> Builder<'a> {
 
     /// Builds the `Dispatcher`.
     ///
-    /// This method will precompute useful information in order to speed up dispatching.
-    pub fn build(self) -> Dispatcher {
+    /// This method will precompute useful information in order to speed up
+    /// dispatching.
+    pub fn build(self) -> Dispatcher<E> {
         let receivers = self
             .final_systems()
             .into_iter()
@@ -182,6 +188,7 @@ impl<'a> Builder<'a> {
             sender,
             receivers,
             world,
+            marker: PhantomData,
         }
     }
 
@@ -195,7 +202,7 @@ impl<'a> Builder<'a> {
     ///
     /// Same as [`add()`](struct.Dispatcher::builder().html#method.add), but
     /// returns `self` to enable method chaining.
-    pub fn with<S>(mut self, system: S, name: &str, dependencies: &[&str]) -> Result<Self, Error>
+    pub fn with<S>(mut self, system: S, name: &str, dependencies: &[&str]) -> Result<Self, Error<E>>
     where
         S: for<'s> System<'s> + Send + 'static,
     {
@@ -216,7 +223,7 @@ impl<'a> Builder<'a> {
         mut system: S,
         name: &str,
         dependencies: &[&str],
-    ) -> Result<&mut Self, Error>
+    ) -> Result<&mut Self, Error<E>>
     where
         S: for<'s> System<'s> + Send + 'static,
     {
@@ -240,8 +247,8 @@ impl<'a> Builder<'a> {
         Ok(self)
     }
 
-    /// Adds a new asynchronous system with a given name and a list of dependencies.
-    /// Please note that the dependency should be added before
+    /// Adds a new asynchronous system with a given name and a list of
+    /// dependencies. Please note that the dependency should be added before
     /// you add the depending system.
     ///
     /// If you want to register systems which can not be specified as
@@ -255,17 +262,17 @@ impl<'a> Builder<'a> {
         system: S,
         name: &str,
         dependencies: &[&str],
-    ) -> Result<Self, Error>
+    ) -> Result<Self, Error<E>>
     where
-        S: for<'s> AsyncSystem<'s> + Send + 'static,
+        S: for<'s> AsyncSystem<'s, Error = E> + Send + 'static,
     {
         self.add_async(system, name, dependencies)?;
 
         Ok(self)
     }
 
-    /// Adds a new asynchronous system with a given name and a list of dependencies.
-    /// Please note that the dependency should be added before
+    /// Adds a new asynchronous system with a given name and a list of
+    /// dependencies. Please note that the dependency should be added before
     /// you add the depending system.
     ///
     /// If you want to register systems which can not be specified as
@@ -276,9 +283,9 @@ impl<'a> Builder<'a> {
         mut system: S,
         name: &str,
         dependencies: &[&str],
-    ) -> Result<&mut Self, Error>
+    ) -> Result<&mut Self, Error<E>>
     where
-        S: for<'s> AsyncSystem<'s> + Send + 'static,
+        S: for<'s> AsyncSystem<'s, Error = E> + Send + 'static,
     {
         self.add_inner(
             name,
@@ -313,7 +320,7 @@ impl<'a> Builder<'a> {
         system: S,
         name: &str,
         dependencies: &[&str],
-    ) -> Result<Self, Error>
+    ) -> Result<Self, Error<E>>
     where
         S: for<'s> System<'s> + 'static,
     {
@@ -332,7 +339,7 @@ impl<'a> Builder<'a> {
         mut system: S,
         name: &str,
         dependencies: &[&str],
-    ) -> Result<&mut Self, Error>
+    ) -> Result<&mut Self, Error<E>>
     where
         S: for<'s> System<'s> + 'static,
     {
@@ -369,9 +376,9 @@ impl<'a> Builder<'a> {
         system: S,
         name: &str,
         dependencies: &[&str],
-    ) -> Result<Self, Error>
+    ) -> Result<Self, Error<E>>
     where
-        S: for<'s> AsyncSystem<'s> + 'static,
+        S: for<'s> AsyncSystem<'s, Error = E> + 'static,
     {
         self.add_local_async(system, name, dependencies)?;
 
@@ -388,9 +395,9 @@ impl<'a> Builder<'a> {
         mut system: S,
         name: &str,
         dependencies: &[&str],
-    ) -> Result<&mut Self, Error>
+    ) -> Result<&mut Self, Error<E>>
     where
-        S: for<'s> AsyncSystem<'s> + 'static,
+        S: for<'s> AsyncSystem<'s, Error = E> + 'static,
     {
         self.add_inner(
             name,
@@ -419,9 +426,9 @@ impl<'a> Builder<'a> {
         mut reads: Vec<ResourceId>,
         mut writes: Vec<ResourceId>,
         f: F,
-    ) -> Result<&mut Self, Error>
+    ) -> Result<&mut Self, Error<E>>
     where
-        F: FnOnce(&mut Self, SystemId) -> &mut Item,
+        F: FnOnce(&mut Self, SystemId) -> &mut Item<E>,
     {
         let name = name.to_owned();
         let id = self.next_id();
@@ -535,17 +542,17 @@ impl<'a> Builder<'a> {
 }
 
 /// Defines how to execute the `System` with the `Dispatcher`.
-enum RunType {
+enum RunType<E> {
     Thread(ThreadRun),
     Local(LocalRun),
-    ThreadAsync(ThreadRunAsync),
-    LocalAsync(LocalRunAsync),
+    ThreadAsync(ThreadRunAsync<E>),
+    LocalAsync(LocalRunAsync<E>),
 }
 
 /// Item that wraps all information of a 'System` within the `Builder`.
-struct Item {
+struct Item<E> {
     name: String,
-    run: RunType,
+    run: RunType<E>,
 
     sender: Sender,
     receiver: Receiver,
@@ -556,8 +563,11 @@ struct Item {
     dependencies: Vec<SystemId>,
 }
 
-impl Item {
-    fn new(name: String, run: RunType) -> Self {
+impl<E> Item<E>
+where
+    E: std::fmt::Debug,
+{
+    fn new(name: String, run: RunType<E>) -> Self {
         let (sender, receiver) = channel(());
 
         Self {
@@ -590,14 +600,14 @@ impl Item {
 
     fn thread_async<S>(name: String, system: S) -> Self
     where
-        S: for<'s> AsyncSystem<'s> + Send + 'static,
+        S: for<'s> AsyncSystem<'s, Error = E> + Send + 'static,
     {
         Self::new(name, RunType::ThreadAsync(Box::new(system)))
     }
 
     fn local_async<S>(name: String, system: S) -> Self
     where
-        S: for<'s> AsyncSystem<'s> + 'static,
+        S: for<'s> AsyncSystem<'s, Error = E> + 'static,
     {
         Self::new(name, RunType::LocalAsync(Box::new(system)))
     }
@@ -677,7 +687,7 @@ mod tests {
             ],
         );
 
-        let dispatcher = Dispatcher::builder()
+        let dispatcher = Dispatcher::<TestError>::builder()
             .with(sys1, "sys1", &[])
             .unwrap()
             .with(sys2, "sys2", &[])
@@ -753,4 +763,7 @@ mod tests {
             self.writes.clone()
         }
     }
+
+    #[derive(Debug)]
+    struct TestError;
 }
