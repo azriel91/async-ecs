@@ -14,7 +14,7 @@ use crate::{
 };
 
 use super::{
-    task::{execute_local, execute_local_async, execute_thread, execute_thread_async},
+    task::{execute_local, execute_local_blocking, execute_thread, execute_thread_blocking},
     Dispatcher, Error, LocalRun, LocalRunAsync, Receiver, Sender, SharedWorld, ThreadRun,
     ThreadRunAsync,
 };
@@ -167,14 +167,14 @@ where
                 RunType::Local(run) => {
                     spawn_local(execute_local(name, run, sender, receivers, world.clone()))
                 }
-                RunType::ThreadAsync(run) => spawn_task(execute_thread_async(
+                RunType::ThreadAsync(run) => spawn_task(execute_thread_blocking(
                     name,
                     run,
                     sender,
                     receivers,
                     world.clone(),
                 )),
-                RunType::LocalAsync(run) => spawn_local(execute_local_async(
+                RunType::LocalAsync(run) => spawn_local(execute_local_blocking(
                     name,
                     run,
                     sender,

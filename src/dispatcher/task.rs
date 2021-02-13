@@ -49,7 +49,7 @@ where
 }
 
 /// Long running task of a `System` that is executed in a separate thread.
-pub async fn execute_thread_async<E>(
+pub async fn execute_thread_blocking<E>(
     name: String,
     mut run: ThreadRunAsync<E>,
     sender: Sender,
@@ -70,7 +70,7 @@ where
 
 /// Long running task of a `System` that is executed in the thread local
 /// context.
-pub async fn execute_local_async<E>(
+pub async fn execute_local_blocking<E>(
     name: String,
     mut run: LocalRunAsync<E>,
     sender: Sender,
